@@ -1,8 +1,7 @@
 import axios from 'axios';
-import { supabase } from '../config/supabase.js';
 
 export async function searchGooglePlaces(req, res) {
-  const { query, location, radius = 5000, minRating } = req.body;
+  const { query, location, minRating } = req.body;
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
 
   if (!apiKey) {
@@ -10,20 +9,9 @@ export async function searchGooglePlaces(req, res) {
   }
 
   try {
-    const geocode = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: { address: location, key: apiKey },
-    });
-    if (!geocode.data.results.length) {
-      return res.status(400).json({ error: 'Location not found' });
-    }
-    const { lat, lng } = geocode.data.results[0].geometry.location;
-
-    const textQuery = `${query} in ${location}`;
+    const textQuery = location ? `${query} in ${location}` : query;
     const searchRes = await axios.post('https://places.googleapis.com/v1/places:searchText', {
       textQuery,
-      locationBias: {
-        circle: { center: { latitude: lat, longitude: lng }, radius },
-      },
     }, {
       headers: {
         'Content-Type': 'application/json',
