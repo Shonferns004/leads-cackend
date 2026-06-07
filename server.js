@@ -20,48 +20,52 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-const sessions = new Map();
+const SECRET = process.env.SESSION_SECRET || 'leadhunter-default-secret';
 
-const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+function createToken(username) {
+  const payload = `${username}:${Date.now()}`;
+  const hmac = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+  return `${payload}:${hmac}`;
+}
 
-function cleanExpiredSessions() {
-  const now = Date.now();
-  for (const [token, session] of sessions) {
-    if (now - session.createdAt > TOKEN_EXPIRY_MS) sessions.delete(token);
-  }
+function verifyToken(token) {
+  try {
+    const parts = token.split(':');
+    if (parts.length < 3) return null;
+    const hmac = parts.pop();
+    const payload = parts.join(':');
+    const expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+    if (hmac === expected) return { username: parts[0] };
+  } catch {}
+  return null;
 }
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
   if (username === process.env.APP_USERNAME && password === process.env.APP_PASSWORD) {
-    cleanExpiredSessions();
-    const token = crypto.randomUUID();
-    sessions.set(token, { username, createdAt: Date.now() });
+    const token = createToken(username);
     return res.json({ success: true, token });
   }
   res.status(401).json({ error: 'Invalid credentials' });
 });
 
-app.post('/api/logout', (req, res) => {
-  const auth = req.headers.authorization;
-  const token = auth?.startsWith('Bearer ') && auth.slice(7);
-  if (token) sessions.delete(token);
+app.post('/api/logout', (_req, res) => {
   res.json({ success: true });
 });
 
 app.get('/api/me', (req, res) => {
   const auth = req.headers.authorization;
   const token = auth?.startsWith('Bearer ') && auth.slice(7);
-  if (token && sessions.has(token)) {
-    return res.json({ authenticated: true, username: sessions.get(token).username });
-  }
+  const session = token && verifyToken(token);
+  if (session) return res.json({ authenticated: true, username: session.username });
   res.json({ authenticated: false });
 });
 
 function isAuthenticated(req, res, next) {
   const auth = req.headers.authorization;
   const token = auth?.startsWith('Bearer ') && auth.slice(7);
-  if (token && sessions.has(token)) return next();
+  const session = token && verifyToken(token);
+  if (session) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
 
