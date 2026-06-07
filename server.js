@@ -8,6 +8,8 @@ import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+import { supabase } from './config/supabase.js';
+
 import leadRoutes from './routes/leadRoutes.js';
 import templateRoutes from './routes/templateRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
@@ -131,6 +133,15 @@ app.get('/api/activities', isAuthenticated, (req, res) => {
     res.json(activities);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/cron/keep-alive', async (req, res) => {
+  try {
+    const { count } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+    res.json({ status: 'ok', leadCount: count ?? 0, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
   }
 });
 
