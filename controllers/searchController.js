@@ -16,7 +16,7 @@ export async function searchGooglePlaces(req, res) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.rating,places.websiteUri,places.primaryType,places.primaryTypeDisplayName',
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.internationalPhoneNumber,places.rating,places.websiteUri,places.primaryType,places.primaryTypeDisplayName,places.photos',
       },
     });
 
@@ -24,6 +24,12 @@ export async function searchGooglePlaces(req, res) {
 
     if (minRating) {
       places = places.filter(p => p.rating >= parseFloat(minRating));
+    }
+
+    function getPhotoUrl(photos) {
+      if (!photos || photos.length === 0) return '';
+      const name = photos[0].name;
+      return `https://places.googleapis.com/v1/${name}/media?maxHeightPx=200&maxWidthPx=200&key=${apiKey}`;
     }
 
     const results = places.map(p => ({
@@ -35,6 +41,7 @@ export async function searchGooglePlaces(req, res) {
       rating: p.rating || 0,
       hasWebsite: !!p.websiteUri,
       website: p.websiteUri || '',
+      photoUrl: getPhotoUrl(p.photos),
     }));
 
     const noWebsite = results.filter(r => !r.hasWebsite && r.phone);
