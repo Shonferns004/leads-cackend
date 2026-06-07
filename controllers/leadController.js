@@ -55,7 +55,5 @@ export async function getStats(req, res) {
   if (error) return res.status(500).json({ error: error.message });
   const total = allLeads.length;
   const contacted = allLeads.filter(l => l.status === 'Contacted').length;
-  const replied = allLeads.filter(l => l.status === 'Replied').length;
-  const meetings = allLeads.filter(l => l.status === 'Meeting').length;
-  res.json({ total, contacted, replied, meetings });
+  res.json({ total, contacted });
 }
