@@ -137,6 +137,10 @@ app.get('/api/activities', isAuthenticated, (req, res) => {
 });
 
 app.get('/api/cron/keep-alive', async (req, res) => {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && req.headers['x-vercel-cron'] !== cronSecret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const { count } = await supabase.from('leads').select('*', { count: 'exact', head: true });
     res.json({ status: 'ok', leadCount: count ?? 0, timestamp: new Date().toISOString() });
