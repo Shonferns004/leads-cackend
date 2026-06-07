@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import session from 'express-session';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,55 +17,53 @@ import whatsappRoutes from './routes/whatsappRoutes.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:4173'];
-
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) cb(null, true);
-    else cb(null, false);
-  },
-  credentials: true,
-}));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'leadhunter-default-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000,
-  },
-}));
+const sessions = new Map();
 
-function isAuthenticated(req, res, next) {
-  if (req.session?.authenticated) return next();
-  res.status(401).json({ error: 'Unauthorized' });
+const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
+function cleanExpiredSessions() {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (now - session.createdAt > TOKEN_EXPIRY_MS) sessions.delete(token);
+  }
 }
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
   if (username === process.env.APP_USERNAME && password === process.env.APP_PASSWORD) {
-    req.session.authenticated = true;
-    req.session.username = username;
-    return res.json({ success: true });
+    cleanExpiredSessions();
+    const token = crypto.randomUUID();
+    sessions.set(token, { username, createdAt: Date.now() });
+    return res.json({ success: true, token });
   }
   res.status(401).json({ error: 'Invalid credentials' });
 });
 
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ success: true });
-  });
+  const auth = req.headers.authorization;
+  const token = auth?.startsWith('Bearer ') && auth.slice(7);
+  if (token) sessions.delete(token);
+  res.json({ success: true });
 });
 
 app.get('/api/me', (req, res) => {
-  if (req.session?.authenticated) {
-    return res.json({ authenticated: true, username: req.session.username });
+  const auth = req.headers.authorization;
+  const token = auth?.startsWith('Bearer ') && auth.slice(7);
+  if (token && sessions.has(token)) {
+    return res.json({ authenticated: true, username: sessions.get(token).username });
   }
   res.json({ authenticated: false });
 });
+
+function isAuthenticated(req, res, next) {
+  const auth = req.headers.authorization;
+  const token = auth?.startsWith('Bearer ') && auth.slice(7);
+  if (token && sessions.has(token)) return next();
+  res.status(401).json({ error: 'Unauthorized' });
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ACTIVITIES_FILE = path.join(__dirname, 'activities.json');
